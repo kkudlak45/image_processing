@@ -27,9 +27,10 @@ int prod(int*, int mask[3][3]);
 double threshold(image_ptr, int, int);
 double mean(image_ptr, int, int);
 double stdev(image_ptr, int);
+double median(image_ptr, int);
 
 int cmpfunc(const void * a, const void * b) { // comparison function for qsort used later, wasn't sure where else to put it
-	return ( *(int*)a < *(int*)b );
+	return ( *(double*)a - *(double*)b );
 }
 
 
@@ -170,6 +171,7 @@ int main(int argc, char **argv) {
 			himg[index] = prod(nxn, horz_mask);
 			vimg[index] = prod(nxn, vert_mask);
 			free(nxn);
+			nxn = NULL;
 			 img[index] = himg[index] + vimg[index];
 
 		}
@@ -195,6 +197,13 @@ int main(int argc, char **argv) {
 			printf("ERR: Process %d failed to write img to pipe\n", pipe_id);
 			return 1;
 		}
+
+		free(himg);
+		free(vimg);
+		free(img);
+		himg = NULL;
+		vimg = NULL;
+		img = NULL;
 
 		printf("PROCESS: %d SUCCESSFULLY WROTE TO PIPE\n", pipe_id);
 	}
@@ -365,30 +374,18 @@ int main(int argc, char **argv) {
 
 	// calculating median without a separate function because im lazy
 	size = rows*cols-proc_num-1;
-	image_ptr sort = (image_ptr) malloc(size*(sizeof(unsigned char)));
-	for (int i = 0; i < size; i++)
-		sort[i] = origin[i]; // copy img into sort so that the original isn't mutated
-	qsort(sort, size, sizeof(image_ptr), cmpfunc); // you have no idea how happy i am that this exists
-
-	double median;
-	if (size%2 == 1)
-		median = (double)sort[size/2]; // integer division to get to middle of list
-	else 
-		median = (double)(((double)sort[size/2] + (double)sort[size/2-1])/2); // when the list is even, take average of 2 middle elements
+	printf("\n\nsize: %d\n\n", size);
+	
 
 	// ah finally, statistics can be printed
 	printf("\n\nMetrics as required in the project handout:\n");
-	printf("\nGlobal Image Mean: %lf\n",                mean(origin, 0, rows*cols));
-	printf("Global Standard Deviation: %lf\n",         stdev(origin,    rows*cols));
-	printf("Global Median: %lf\n", median);
-
-	printf("\nHorizontal Edge Response Average: %lf\n", mean(himg  , 0, rows*cols));
-	printf("Vertical Edge Response Average: %lf\n",     mean(vimg  , 0, rows*cols));
-	printf("Combined Edge Response Average: %lf\n",     mean( img  , 0, rows*cols));
-
-	printf("\nOverall image mean: %lf\n",               mean_of_means);
-	printf("Overall image standard deviation: %lf\n",   stdev_of_means);
-	printf("Overall image median: %lf\n\n\n",           median_of_medians);
+	printf("\n             mean      stdev     median\n");
+	printf("Original: %lf %lf %lf\n", mean(origin, 0, rows*cols), stdev(origin, size), median(origin, size));
+	printf("Horz Res: %lf  %lf %lf\n", mean(himg  , 0, rows*cols), stdev(himg  , size), median(himg  , size));
+	printf("Vert Res: %lf  %lf %lf\n", mean(vimg  , 0, rows*cols), stdev(vimg  , size), median(vimg  , size));
+	printf("Comb Res: %lf  %lf %lf\n", mean( img  , 0, rows*cols), stdev( img  , size), median( img  , size));
+	printf("SubBlcks: %lf %lf %lf\n", mean_of_means             , stdev_of_means     , median_of_medians   );
+	printf("\n\n");
 
 	// levi if you're reading this, I'm sorry for making my program so horribly monolithic
 
@@ -459,7 +456,7 @@ double mean(image_ptr img, int starting_index, int size) {
 	for (int i = starting_index; i < starting_index+size; i++)
 		sum += (img[i] > 255 ? 255 : img[i]);
 
-	return (double)( ((double)sum)/((double)size) );
+	return ((double)sum)/((double)size);
 }
 
 /*********************************************************************
@@ -470,7 +467,7 @@ double mean(image_ptr img, int starting_index, int size) {
 double stdev(image_ptr img, int size) {
 
 	double m = mean(img, 0, size);
-	int stdsum = 0;
+	double stdsum = 0;
 
 	for (int i = 0; i < size; i++) {
 		int elem = (img[i] > 255 ? 255 : img[i]);
@@ -478,5 +475,24 @@ double stdev(image_ptr img, int size) {
 	}
 
 	return sqrt(((double)stdsum)/((double)(size-1)));
+}
+
+
+double median(image_ptr img, int size) {
+
+	double* sort = (double*) malloc(size*(sizeof(double)));
+	for (int i = 0; i < size; i++)
+		sort[i] = (double)img[i]; // copy img into sort so that the original isn't mutated
+
+	qsort(sort, size, sizeof(double), cmpfunc); // you have no idea how happy i am that this exists
+
+	double median;
+	if (size%2 == 1)
+		median = sort[size/2]; // integer division to get to middle of list
+	else 
+		median = ((sort[size/2] + sort[size/2-1])/2); // when the list is even, take average of 2 middle elements
+
+	return median;
+
 }
 
